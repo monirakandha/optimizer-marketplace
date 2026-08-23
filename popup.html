@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniMarket Optimizer</title>
+  <link rel="stylesheet" href="popup.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-content">
+        <div class="logo-circle">
+          <span class="logo-icon">🌐</span>
+        </div>
+        <div>
+          <h1>Flexloop Marketplace Analyzer</h1>
+          <p id="marketplace-badge" class="badge">Detecting Marketplace...</p>
+        </div>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <div class="loading-state" id="loading-state">
+        <div class="spinner"></div>
+        <p>Analyzing Walmart Listing...</p>
+      </div>
+
+      <div class="results-state hidden" id="results-state">
+        <div class="score-card">
+          <div class="score-circle">
+            <svg viewBox="0 0 36 36" class="circular-chart">
+              <path class="circle-bg"
+                d="M18 2.0845
+                  a 15.9155 15.9155 0 0 1 0 31.831
+                  a 15.9155 15.9155 0 0 1 0 -31.831"
+              />
+              <path class="circle" id="score-circle-path"
+                stroke-dasharray="0, 100"
+                d="M18 2.0845
+                  a 15.9155 15.9155 0 0 1 0 31.831
+                  a 15.9155 15.9155 0 0 1 0 -31.831"
+              />
+              <text x="18" y="20.35" class="percentage" id="score-text">0%</text>
+            </svg>
+          </div>
+          <div class="score-details">
+            <h2 id="score-title">Listing Quality</h2>
+            <p id="score-subtitle">Score based on best practices</p>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="issues">Health</button>
+          <button class="tab-btn" data-tab="seo">Keywords</button>
+          <button class="tab-btn" data-tab="ai-gen">AI Prompt</button>
+          <button class="tab-btn" data-tab="pricing">Pricing</button>
+          <button class="tab-btn" data-tab="competitors">Competitors</button>
+          <button class="tab-btn" data-tab="history">History</button>
+        </div>
+
+        <div class="tab-content active" id="issues">
+          <div style="display:flex; justify-content:flex-end; margin-bottom: 12px;">
+            <button id="export-issues-btn" class="btn-small" style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; padding:6px 12px; cursor:pointer;">⬇️ Export to CSV</button>
+          </div>
+          <ul class="check-list" id="check-list">
+            <!-- Checks will be dynamically inserted here -->
+          </ul>
+        </div>
+
+        <div id="competitors" class="tab-content">
+          
+          <!-- Price Competitiveness Card -->
+          <div id="price-competitiveness-card" class="competitor-card hidden">
+            <div class="card-header">
+              <h3>Price competitiveness</h3>
+            </div>
+            <p class="card-desc">Consider adjusting your price to match or beat the competition for better visibility and sales.</p>
+            
+            <div id="price-alert-box" class="price-alert warning">
+              <span class="icon">⚠️</span> Your current price is higher than the competition.
+            </div>
+            
+            <div class="price-comparison-details">
+              <h4 id="price-diff-text">$0.00 more</h4>
+              <p>Your price: <span id="your-current-price">$0.00</span></p>
+              <p>On Amazon: <span id="lowest-amazon-price">$0.00</span></p>
+            </div>
+          </div>
+
+          <div class="competitor-actions" style="margin-top: 16px;">
+            <button class="btn btn-amazon" id="search-amazon-btn">
+              <span class="icon">🛒</span> Open Search on Amazon
+            </button>
+            <button class="btn btn-google" id="search-google-btn">
+              <span class="icon">🔍</span> Open Google Shopping
+            </button>
+          </div>
+          
+          <div id="live-competitors-section" style="margin-top: 24px;">
+            <div class="section-desc" style="text-align: left; font-weight: 600; color: var(--text-primary);">Live Amazon Competitors</div>
+            <div id="competitors-list" style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="text-align: center; color: var(--text-secondary); font-size: 13px; padding: 20px 0;">
+                <div class="spinner" style="width: 20px; height: 20px; margin: 0 auto 8px; border-width: 2px;"></div>
+                Scraping live competitors...
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-content" id="seo">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 16px;">
+            <p class="section-desc" style="margin-bottom:0; text-align:left;">Keyword research data (showing estimated USA volume & click rates).</p>
+            <button id="export-seo-btn" class="btn-small" style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; padding:6px 12px; cursor:pointer; white-space:nowrap; margin-left:8px;">⬇️ Export to CSV</button>
+          </div>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Keyword</th>
+                  <th>Search Vol.</th>
+                  <th>Click Rate</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="advanced-keyword-list">
+                <tr><td colspan="4" style="text-align:center;"><div class="spinner keyword-spinner"></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- AI Prompt Generator Tab -->
+        <div id="ai-gen" class="tab-content">
+          <div class="section-desc">Generate a perfect SEO copywriting prompt for ChatGPT to write your listing.</div>
+          
+          <button id="generate-ai-btn" class="btn btn-primary">
+            <span class="icon">✨</span> Generate ChatGPT Prompt
+          </button>
+          
+          <div id="ai-result-container" class="hidden">
+            <div class="ai-box">
+              <label for="ai-prompt">Copy & Paste into ChatGPT:</label>
+              <textarea id="ai-prompt" rows="12" readonly placeholder="Your custom prompt will appear here..."></textarea>
+            </div>
+            <button id="copy-prompt-btn" class="btn btn-secondary" style="width: 100%; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); margin-bottom: 20px;">
+              📋 Copy Prompt to Clipboard
+            </button>
+          </div>
+        </div>
+
+        <div class="tab-content" id="pricing">
+          <p class="section-desc">Calculate your optimal selling price to beat competitors while protecting margins.</p>
+          
+          <div class="calculator-container">
+            <div class="calc-row">
+              <label for="marketplace-fee">Marketplace</label>
+              <select id="marketplace-fee">
+                <option value="0.15">Amazon / Walmart (~15%)</option>
+                <option value="0.13">eBay (~13%)</option>
+                <option value="0.10">Custom (~10%)</option>
+              </select>
+            </div>
+            <div class="calc-row">
+              <label for="cost-price">Your Cost Price ($)</label>
+              <input type="number" id="cost-price" placeholder="e.g. 15.00" step="0.01">
+            </div>
+            <div class="calc-row">
+              <label for="target-margin">Target Profit Margin (%)</label>
+              <input type="number" id="target-margin" value="20" step="1">
+            </div>
+            
+            <button class="btn btn-primary" id="calculate-price-btn" style="margin-top:12px;">Calculate Optimal Price</button>
+            
+            <div id="pricing-results" class="hidden pricing-results-box">
+              <div class="result-item">
+                <span>Avg. Competitor Price:</span>
+                <strong id="avg-comp-price" class="text-warning">$0.00</strong>
+              </div>
+              <div class="result-item highlight">
+                <span>Suggested Sell Price:</span>
+                <strong id="suggested-price" class="text-success">$0.00</strong>
+              </div>
+              <div class="result-item">
+                <span>Est. Net Profit:</span>
+                <strong id="est-profit">$0.00</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- History Tab -->
+        <div class="tab-content" id="history">
+          <p class="section-desc" style="text-align:left;">Your recently analyzed listings.</p>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Score</th>
+                  <th>Market</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="history-list">
+                <tr><td colspan="4" style="text-align:center; color: var(--text-secondary);">No history yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <button id="clear-history-btn" class="btn btn-secondary" style="margin-top:16px; width:100%; border:1px solid var(--border); background:var(--bg-primary); color:var(--text-primary); border-radius:8px; padding:10px;">
+            🗑️ Clear History
+          </button>
+        </div>
+
+      </div>
+      
+      <div class="error-state hidden" id="error-state">
+        <div class="error-icon">⚠️</div>
+        <p id="error-message">Please open a Walmart product page to analyze.</p>
+      </div>
+    </main>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

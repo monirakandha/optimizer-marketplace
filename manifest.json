@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Flexloop Marketplace Analyzer",
+  "version": "1.0",
+  "description": "An advanced tool to optimize and analyze listings across Walmart, Amazon, and eBay.",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "*://*.walmart.com/*", "*://*.walmart.ca/*",
+    "*://*.amazon.com/*", "*://*.amazon.ca/*", "*://*.amazon.co.uk/*", "*://*.amazon.com.au/*", "*://*.amazon.de/*", "*://*.amazon.fr/*", "*://*.amazon.it/*", "*://*.amazon.es/*", "*://*.amazon.co.jp/*", "*://*.amazon.in/*", "*://*.amazon.com.br/*", "*://*.amazon.ae/*", "*://*.amazon.sa/*",
+    "*://*.ebay.com/*", "*://*.ebay.ca/*", "*://*.ebay.co.uk/*", "*://*.ebay.com.au/*", "*://*.ebay.de/*", "*://*.ebay.fr/*", "*://*.ebay.it/*", "*://*.ebay.es/*",
+    "*://*.target.com/*", "*://*.bestbuy.com/*",
+    "*://suggestqueries.google.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.walmart.com/ip/*", "*://*.walmart.ca/ip/*",
+        "*://*.amazon.com/dp/*", "*://*.amazon.com/*/dp/*",
+        "*://*.amazon.ca/dp/*", "*://*.amazon.ca/*/dp/*",
+        "*://*.amazon.co.uk/dp/*", "*://*.amazon.co.uk/*/dp/*",
+        "*://*.amazon.com.au/dp/*", "*://*.amazon.com.au/*/dp/*",
+        "*://*.amazon.de/dp/*", "*://*.amazon.de/*/dp/*",
+        "*://*.amazon.fr/dp/*", "*://*.amazon.fr/*/dp/*",
+        "*://*.amazon.it/dp/*", "*://*.amazon.it/*/dp/*",
+        "*://*.amazon.es/dp/*", "*://*.amazon.es/*/dp/*",
+        "*://*.amazon.ae/dp/*", "*://*.amazon.ae/*/dp/*",
+        "*://*.amazon.sa/dp/*", "*://*.amazon.sa/*/dp/*",
+        "*://*.ebay.com/itm/*", "*://*.ebay.ca/itm/*", "*://*.ebay.co.uk/itm/*", "*://*.ebay.com.au/itm/*", "*://*.ebay.de/itm/*", "*://*.ebay.fr/itm/*", "*://*.ebay.it/itm/*", "*://*.ebay.es/itm/*",
+        "*://*.target.com/p/*", "*://*.bestbuy.com/site/*"
+      ],
+      "js": ["content.js"]
+    }
+  ]
+}
