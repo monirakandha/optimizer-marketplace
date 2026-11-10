@@ -1,0 +1,9 @@
+﻿{
+  "name": "flexloop-marketplace-analyzer-tests",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check:syntax": "node --check content.js && node --check popup.js && node --check lib/analyzer.js && node --check lib/sanitize.js"
+  }
+}

@@ -1,56 +1,44 @@
-document.addEventListener('DOMContentLoaded', () => {
+﻿document.addEventListener('DOMContentLoaded', () => {
   const loadingState = document.getElementById('loading-state');
   const resultsState = document.getElementById('results-state');
   const errorState = document.getElementById('error-state');
-  
-  // Tab Switching Logic
+
   const tabBtns = document.querySelectorAll('.tab-btn');
   const tabContents = document.querySelectorAll('.tab-content');
-  
+
   tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      // Remove active from all
       tabBtns.forEach(b => b.classList.remove('active'));
       tabContents.forEach(c => c.classList.remove('active'));
-      
-      // Add active to clicked
       btn.classList.add('active');
-      document.getElementById(btn.dataset.tab).classList.add('active');
+      const target = document.getElementById(btn.dataset.tab);
+      if (target) target.classList.add('active');
     });
   });
 
-  // Request Data from active tab
-  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     const activeTab = tabs[0];
-    
-    // Check if we are on a supported marketplace using generic keywords to support all TLDs
-    if (activeTab.url && (activeTab.url.includes('walmart.') || activeTab.url.includes('amazon.') || activeTab.url.includes('ebay.') || activeTab.url.includes('target.') || activeTab.url.includes('bestbuy.'))) {
-      chrome.tabs.sendMessage(activeTab.id, {action: "ANALYZE_LISTING"}, (response) => {
+    const supported = activeTab && activeTab.url && (activeTab.url.includes('walmart.') || activeTab.url.includes('amazon.') || activeTab.url.includes('ebay.') || activeTab.url.includes('target.') || activeTab.url.includes('bestbuy.'));
+    if (supported) {
+      chrome.tabs.sendMessage(activeTab.id, { action: 'ANALYZE_LISTING' }, (response) => {
         if (chrome.runtime.lastError || !response) {
-          // If content script isn't loaded (e.g., page loaded before extension installed)
-          chrome.scripting.executeScript({
-            target: {tabId: activeTab.id},
-            files: ['content.js']
-          }, () => {
-            // Try again
-            chrome.tabs.sendMessage(activeTab.id, {action: "ANALYZE_LISTING"}, handleResponse);
+          chrome.scripting.executeScript({ target: { tabId: activeTab.id }, files: ['content.js'] }, () => {
+            chrome.tabs.sendMessage(activeTab.id, { action: 'ANALYZE_LISTING' }, handleResponse);
           });
         } else {
           handleResponse(response);
         }
       });
     } else {
-      showError("Please open a Walmart, Amazon, eBay, Target, or Best Buy product page to analyze.");
+      showError('Please open a Walmart, Amazon, eBay, Target, or Best Buy product page to analyze.');
     }
   });
 
-  // Load History on startup
   loadHistory();
 
   function getAmazonDomain(currentDomain) {
     if (!currentDomain) return 'www.amazon.com';
-    const d = currentDomain.toLowerCase();
-    
+    const d = String(currentDomain).toLowerCase();
     if (d.includes('.com.au')) return 'www.amazon.com.au';
     if (d.includes('.ca')) return 'www.amazon.ca';
     if (d.includes('.co.uk')) return 'www.amazon.co.uk';
@@ -65,329 +53,284 @@ document.addEventListener('DOMContentLoaded', () => {
     if (d.includes('.ae')) return 'www.amazon.ae';
     if (d.includes('.sa')) return 'www.amazon.sa';
     if (d.includes('.com.sg')) return 'www.amazon.sg';
-    
-    return 'www.amazon.com'; // fallback
+    return 'www.amazon.com';
   }
 
   function handleResponse(data) {
-    if (!data) {
-      showError("Failed to analyze page. Please refresh and try again.");
+    if (!data || data.error) {
+      showError((data && data.error) || 'Failed to analyze page. Please refresh and try again.');
       return;
     }
-    
-    // Hide loading
     loadingState.classList.add('hidden');
     resultsState.classList.remove('hidden');
-    
-    document.getElementById('marketplace-badge').innerText = 'Analyzing ' + (data.marketplace || 'Listing');
-    
-    // Auto-select marketplace fee in dropdown if available
-    const feeSelect = document.getElementById('marketplace-fee');
-    if (data.marketplace === 'eBay') {
-      feeSelect.value = "0.13";
-    } else {
-      feeSelect.value = "0.15";
-    }
-    
+    setTextById('marketplace-badge', 'Analyzing ' + (data.marketplace || 'Listing'));
+
     const targetAmazonDomain = getAmazonDomain(data.domain);
-    
-    renderScore(data.score);
-    renderIssues(data.checks);
-    setupCompetitorLinks(data.title, data.price, targetAmazonDomain);
+    renderScore(data.score, data.scoreLabel);
+    renderIssues(data.checks || []);
+    setupCompetitorLinks(data.title, targetAmazonDomain);
     fetchAdvancedKeywords(data.title, targetAmazonDomain);
     setupAIGenerator(data.title);
-    setupPricingCalculator(data.price);
-    
+    setupPricingCalculator(data);
     saveToHistory(data);
-    setupExports(data.checks);
+    setupExports(data.checks || []);
   }
 
   function showError(msg) {
     loadingState.classList.add('hidden');
     resultsState.classList.add('hidden');
     errorState.classList.remove('hidden');
-    if (msg) document.getElementById('error-message').innerText = msg;
+    if (msg) setTextById('error-message', msg);
   }
 
-  function renderScore(score) {
+  function setTextById(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text == null ? '' : String(text);
+  }
+
+  function clearNode(el) {
+    while (el && el.firstChild) el.removeChild(el.firstChild);
+  }
+
+  function renderScore(score, scoreLabel) {
     const circle = document.getElementById('score-circle-path');
     const text = document.getElementById('score-text');
-    
-    // Animate score
+    const subtitle = document.getElementById('score-subtitle');
+    const safeScore = Math.max(0, Math.min(100, Number(score) || 0));
+    if (subtitle) subtitle.textContent = scoreLabel === 'INTERNAL_HEURISTIC' ? 'Label: INTERNAL_HEURISTIC (not a guarantee)' : 'Score based on observed/extracted signals';
+
     setTimeout(() => {
-      circle.style.strokeDasharray = `${score}, 100`;
-      
-      // Color logic based on score
-      if (score >= 80) {
-        circle.style.stroke = 'var(--success)';
-      } else if (score >= 50) {
-        circle.style.stroke = 'var(--warning)';
-      } else {
-        circle.style.stroke = 'var(--error)';
+      if (circle) {
+        circle.style.strokeDasharray = `${safeScore}, 100`;
+        if (safeScore >= 80) circle.style.stroke = 'var(--success)';
+        else if (safeScore >= 50) circle.style.stroke = 'var(--warning)';
+        else circle.style.stroke = 'var(--error)';
       }
     }, 100);
 
-    // Animate number counting
     let currentScore = 0;
     const interval = setInterval(() => {
-      if (currentScore >= score) {
+      if (currentScore >= safeScore) {
         clearInterval(interval);
-        text.textContent = `${score}%`;
+        if (text) text.textContent = `${safeScore}%`;
       } else {
         currentScore++;
-        text.textContent = `${currentScore}%`;
+        if (text) text.textContent = `${currentScore}%`;
       }
     }, 20);
   }
 
   function renderIssues(checks) {
     const list = document.getElementById('check-list');
-    list.innerHTML = ''; // clear
-    
-    checks.forEach(check => {
+    if (!list) return;
+    clearNode(list);
+
+    const ordered = (checks || []).slice().sort((a, b) => {
+      const rank = { error: 0, warning: 1, success: 2 };
+      return (rank[a.status] ?? 3) - (rank[b.status] ?? 3);
+    });
+
+    ordered.forEach((check) => {
       const li = document.createElement('li');
-      li.className = `check-item ${check.status}`; // success, warning, error
-      
-      let icon = '✅';
-      if (check.status === 'warning') icon = '⚠️';
-      if (check.status === 'error') icon = '❌';
-      
-      li.innerHTML = `
-        <div class="check-icon">${icon}</div>
-        <div class="check-content">
-          <h4>${check.title}</h4>
-          <p>${check.message}</p>
-          ${check.solution ? `<div class="check-solution"><strong>💡 Fix:</strong> ${check.solution}</div>` : ''}
-        </div>
-      `;
-      
-      // Keep errors/warnings at the top
-      if (check.status === 'error' || check.status === 'warning') {
-        list.prepend(li);
-      } else {
-        list.appendChild(li);
+      li.className = `check-item ${check.status || 'warning'}`;
+
+      const iconDiv = document.createElement('div');
+      iconDiv.className = 'check-icon';
+      iconDiv.textContent = check.status === 'error' ? '❌' : check.status === 'warning' ? '⚠️' : '✅';
+
+      const content = document.createElement('div');
+      content.className = 'check-content';
+
+      const h4 = document.createElement('h4');
+      h4.textContent = check.title || 'Check';
+      const p = document.createElement('p');
+      p.textContent = check.message || '';
+
+      content.appendChild(h4);
+      content.appendChild(p);
+
+      if (check.solution) {
+        const sol = document.createElement('div');
+        sol.className = 'check-solution';
+        const strong = document.createElement('strong');
+        strong.textContent = 'Note: ';
+        sol.appendChild(strong);
+        sol.appendChild(document.createTextNode(check.solution));
+        content.appendChild(sol);
       }
+
+      li.appendChild(iconDiv);
+      li.appendChild(content);
+      list.appendChild(li);
     });
   }
 
-  function setupCompetitorLinks(title, upc, amazonDomain) {
+  function setupCompetitorLinks(title, amazonDomain) {
     const searchAmazonBtn = document.getElementById('search-amazon-btn');
     const searchGoogleBtn = document.getElementById('search-google-btn');
     const listContainer = document.getElementById('competitors-list');
-    
-    // Create query
-    let query = title;
-    let rawQuery = title;
-    if (title) {
-      const words = title.split(' ').slice(0, 5).join(' ');
-      rawQuery = words;
-      query = encodeURIComponent(words);
-    }
-    
-    searchAmazonBtn.addEventListener('click', () => {
-      const url = `https://${amazonDomain}/s?k=${query}`;
-      chrome.tabs.create({url: url});
-    });
-    
-    searchGoogleBtn.addEventListener('click', () => {
-      // Pass geographic gl= parameter based on domain if possible, or just standard
-      const url = `https://www.google.com/search?tbm=shop&q=${query}`;
-      chrome.tabs.create({url: url});
-    });
+    const card = document.getElementById('price-competitiveness-card');
 
-    // Scrape Live Amazon Competitors
-    if (rawQuery) {
-      fetch(`https://${amazonDomain}/s?k=${query}`, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8'
-        }
-      })
-      .then(response => response.text())
-      .then(html => {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        
-        // Amazon Search Results
-        const resultItems = doc.querySelectorAll('div[data-component-type="s-search-result"]');
-        
-        if (resultItems.length === 0) {
-          listContainer.innerHTML = '<div style="text-align:center;color:var(--text-secondary);font-size:12px;">Could not retrieve live data. Try clicking "Search on Amazon".</div>';
-          return;
-        }
+    if (card) card.classList.add('hidden');
 
-        listContainer.innerHTML = ''; // clear loading state
-        
-        let added = 0;
-        let lowestCompPrice = Infinity;
+    const safeTitle = title || '';
+    const words = safeTitle.split(/\s+/).filter(Boolean).slice(0, 5).join(' ');
+    const query = encodeURIComponent(words || safeTitle);
 
-        resultItems.forEach(item => {
-          if (added >= 4) return;
-          
-          const titleEl = item.querySelector('h2 a span');
-          const priceWhole = item.querySelector('.a-price-whole');
-          const priceFraction = item.querySelector('.a-price-fraction');
-          
-          if (titleEl && priceWhole) {
-            const compTitle = titleEl.innerText.trim();
-            const rawPrice = parseFloat(priceWhole.innerText.trim().replace(/,/g, '') + '.' + (priceFraction ? priceFraction.innerText.trim() : '00'));
-            const compPrice = `$${rawPrice.toFixed(2)}`;
-            
-            if (rawPrice < lowestCompPrice) lowestCompPrice = rawPrice;
-
-            const div = document.createElement('div');
-            div.className = 'competitor-item';
-            div.innerHTML = `
-              <div class="competitor-title" title="${compTitle}">${compTitle}</div>
-              <div class="competitor-price">${compPrice}</div>
-            `;
-            listContainer.appendChild(div);
-            added++;
-          }
-        });
-        
-        if (added === 0) {
-          listContainer.innerHTML = '<div style="text-align:center;color:var(--text-secondary);font-size:12px;">No priced items found. Try clicking "Search on Amazon".</div>';
-        } else {
-          // Calculate Price Competitiveness
-          let userPrice = 0;
-          if (upc) {
-            userPrice = parseFloat(upc.replace(/[^0-9.]/g, ''));
-          }
-          
-          if (!isNaN(userPrice) && userPrice > 0) {
-            const diff = userPrice - lowestCompPrice;
-            const card = document.getElementById('price-competitiveness-card');
-            const alertBox = document.getElementById('price-alert-box');
-            const diffText = document.getElementById('price-diff-text');
-            
-            document.getElementById('your-current-price').innerText = `$${userPrice.toFixed(2)}`;
-            document.getElementById('lowest-amazon-price').innerText = `$${lowestCompPrice.toFixed(2)}`;
-            
-            if (diff > 0) {
-              alertBox.className = 'price-alert warning';
-              alertBox.innerHTML = '<span class="icon">⚠️</span> Your current price is higher than the competition.';
-              diffText.innerText = `$${diff.toFixed(2)} more`;
-              diffText.style.color = '#92400e';
-            } else if (diff < 0) {
-              alertBox.className = 'price-alert success';
-              alertBox.innerHTML = '<span class="icon">🏆</span> Your price beats the competition!';
-              diffText.innerText = `$${Math.abs(diff).toFixed(2)} less`;
-              diffText.style.color = '#065f46';
-            } else {
-              alertBox.className = 'price-alert success';
-              alertBox.innerHTML = '<span class="icon">✅</span> Your price matches the competition exactly.';
-              diffText.innerText = `Exact match`;
-              diffText.style.color = '#065f46';
-            }
-            
-            card.classList.remove('hidden');
-          }
-        }
-      })
-      .catch(err => {
-        console.error('Error scraping Amazon:', err);
-        listContainer.innerHTML = '<div style="text-align:center;color:var(--error);font-size:12px;">Failed to fetch live data.</div>';
+    if (searchAmazonBtn) {
+      const clone = searchAmazonBtn.cloneNode(true);
+      searchAmazonBtn.parentNode.replaceChild(clone, searchAmazonBtn);
+      clone.addEventListener('click', () => {
+        if (!query) return;
+        chrome.tabs.create({ url: `https://${amazonDomain}/s?k=${query}` });
       });
-    } else {
-      listContainer.innerHTML = '<div style="text-align:center;color:var(--text-secondary);font-size:12px;">Waiting for product title...</div>';
     }
+    if (searchGoogleBtn) {
+      const clone = searchGoogleBtn.cloneNode(true);
+      searchGoogleBtn.parentNode.replaceChild(clone, searchGoogleBtn);
+      clone.addEventListener('click', () => {
+        if (!query) return;
+        chrome.tabs.create({ url: `https://www.google.com/search?tbm=shop&q=${query}` });
+      });
+    }
+
+    if (!listContainer) return;
+    clearNode(listContainer);
+    const msg = document.createElement('div');
+    msg.style.textAlign = 'center';
+    msg.style.color = 'var(--text-secondary)';
+    msg.style.fontSize = '13px';
+    msg.style.padding = '20px 0';
+    msg.textContent = 'Live competitor scraping is disabled in this stabilized milestone. Use the search buttons above to review competitors manually on the marketplace. Verified competitor prices: Data unavailable — no verified source.';
+    listContainer.appendChild(msg);
   }
 
   async function fetchAdvancedKeywords(title, amazonDomain) {
     const tableBody = document.getElementById('advanced-keyword-list');
+    if (!tableBody) return;
+    clearNode(tableBody);
+
     if (!title) {
-      tableBody.innerHTML = '<tr><td colspan="4">No title found to generate keywords.</td></tr>';
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 4;
+      td.style.textAlign = 'center';
+      td.textContent = 'No title found to generate keyword suggestions.';
+      tr.appendChild(td);
+      tableBody.appendChild(tr);
       return;
     }
 
-    // Clean title and filter empty words
-    const cleanWords = title.replace(/[^a-zA-Z0-9 ]/g, "").split(' ').filter(w => w.trim() !== '');
-    if (cleanWords.length === 0) return;
+    const loadingRow = document.createElement('tr');
+    const loadingTd = document.createElement('td');
+    loadingTd.colSpan = 4;
+    loadingTd.style.textAlign = 'center';
+    const spinner = document.createElement('div');
+    spinner.className = 'keyword-spinner spinner';
+    const p = document.createElement('p');
+    p.style.textAlign = 'center';
+    p.style.color = 'var(--text-secondary)';
+    p.textContent = `Fetching autocomplete suggestions (Google & ${amazonDomain})...`;
+    loadingTd.appendChild(spinner);
+    loadingTd.appendChild(p);
+    loadingRow.appendChild(loadingTd);
+    tableBody.appendChild(loadingRow);
 
-    tableBody.innerHTML = `<tr><td colspan="4"><div class="keyword-spinner spinner"></div><p style="text-align:center; color: var(--text-secondary);">Mining Google & ${amazonDomain}...</p></td></tr>`;
-
-    let allKeywords = new Set();
-    
-    // We will query the API with 2, 3, and 4 words to get a massive spread of broad and long-tail keywords
+    const cleanWords = String(title).replace(/[^a-zA-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
     const queriesToTry = [];
     if (cleanWords.length >= 2) queriesToTry.push(cleanWords.slice(0, 2).join(' '));
     if (cleanWords.length >= 3) queriesToTry.push(cleanWords.slice(0, 3).join(' '));
     if (cleanWords.length >= 4) queriesToTry.push(cleanWords.slice(0, 4).join(' '));
-    if (queriesToTry.length === 0) queriesToTry.push(cleanWords[0]); // fallback if only 1 word
+    if (queriesToTry.length === 0 && cleanWords[0]) queriesToTry.push(cleanWords[0]);
 
     const fetchPromises = [];
-
     queriesToTry.forEach(q => {
       const encodedQ = encodeURIComponent(q);
-      // Google Autocomplete
       fetchPromises.push(
         fetch(`https://suggestqueries.google.com/complete/search?client=firefox&q=${encodedQ}`)
-          .then(res => res.json())
-          .then(data => data[1] || [])
+          .then(res => res.ok ? res.json() : [q, []])
+          .then(data => Array.isArray(data) && Array.isArray(data[1]) ? data[1] : [])
           .catch(() => [])
       );
-      // Amazon Autocomplete (Global Support)
-      // Different Amazon TLDs may use completion.amazon.[tld]
-      const completionDomain = amazonDomain.replace('www.', 'completion.');
+      const completionDomain = String(amazonDomain || 'www.amazon.com').replace('www.', 'completion.');
       fetchPromises.push(
         fetch(`https://${completionDomain}/search/complete?search-alias=aps&client=amazon-search-ui&mkt=1&q=${encodedQ}`)
-          .then(res => res.json())
-          .then(data => data[1] || [])
+          .then(res => res.ok ? res.json() : [q, []])
+          .then(data => Array.isArray(data) && Array.isArray(data[1]) ? data[1] : [])
           .catch(() => [])
       );
     });
 
     try {
       const resultsArray = await Promise.all(fetchPromises);
-      resultsArray.forEach(suggestions => {
-        suggestions.forEach(kw => {
-          if (kw && kw.length > 3) allKeywords.add(kw.toLowerCase());
+      const seen = new Set();
+      const suggestions = [];
+      resultsArray.forEach(arr => {
+        (arr || []).forEach(kw => {
+          const v = String(kw || '').trim();
+          if (!v || v.length <= 2) return;
+          const key = v.toLowerCase();
+          if (seen.has(key)) return;
+          seen.add(key);
+          suggestions.push(v);
         });
       });
 
-      const finalKeywords = Array.from(allKeywords);
-      
-      if (finalKeywords.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="4">No keywords found. Try a different product title.</td></tr>';
+      clearNode(tableBody);
+      if (suggestions.length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 4;
+        td.style.textAlign = 'center';
+        td.textContent = 'Data unavailable — no verified autocomplete suggestions returned.';
+        tr.appendChild(td);
+        tableBody.appendChild(tr);
         return;
       }
 
-      tableBody.innerHTML = '';
-      
-      // Sort keywords somewhat randomly to mix long-tail and broad terms, but keep highly relevant ones near top
-      finalKeywords.sort((a, b) => a.length - b.length);
-
-      let baseVolume = Math.floor(Math.random() * 50000) + 10000;
-
-      finalKeywords.slice(0, 30).forEach((keyword, index) => {
-        // Mock Volume & Click Rate algorithm (higher volume for shorter terms)
-        const volume = Math.max(250, Math.floor(baseVolume / (1 + (index * 0.15))));
-        const clickRate = (Math.random() * (12 - 2) + 2).toFixed(1) + '%';
-        
+      suggestions.sort((a, b) => a.length - b.length);
+      suggestions.slice(0, 30).forEach(keyword => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td><strong>${keyword}</strong></td>
-          <td>${volume.toLocaleString()}</td>
-          <td>${clickRate}</td>
-          <td><button class="btn-small copy-btn" data-kw="${keyword}">Copy</button></td>
-        `;
+
+        const tdKw = document.createElement('td');
+        const strong = document.createElement('strong');
+        strong.textContent = keyword;
+        tdKw.appendChild(strong);
+
+        const tdVol = document.createElement('td');
+        tdVol.textContent = 'Data unavailable — no verified source.';
+        const tdCtr = document.createElement('td');
+        tdCtr.textContent = 'Data unavailable — no verified source.';
+
+        const tdAction = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.className = 'btn-small copy-btn';
+        btn.dataset.kw = keyword;
+        btn.textContent = 'Copy';
+        btn.addEventListener('click', () => {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(keyword).catch(() => {});
+          }
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy'; }, 1000);
+        });
+        tdAction.appendChild(btn);
+
+        tr.appendChild(tdKw);
+        tr.appendChild(tdVol);
+        tr.appendChild(tdCtr);
+        tr.appendChild(tdAction);
         tableBody.appendChild(tr);
       });
-
-      // Add copy listeners
-      document.querySelectorAll('.copy-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const kw = e.target.getAttribute('data-kw');
-          navigator.clipboard.writeText(kw);
-          e.target.innerText = "Copied!";
-          setTimeout(() => { e.target.innerText = "Copy"; }, 1000);
-        });
-      });
-
-    } catch (error) {
-      console.error('Error fetching keywords:', error);
-      tableBody.innerHTML = '<tr><td colspan="4">Failed to load keyword data. Check connection.</td></tr>';
+    } catch (e) {
+      clearNode(tableBody);
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 4;
+      td.style.textAlign = 'center';
+      td.textContent = 'Data unavailable — failed to load keyword suggestions.';
+      tr.appendChild(td);
+      tableBody.appendChild(tr);
     }
   }
 
@@ -396,201 +339,246 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultContainer = document.getElementById('ai-result-container');
     const promptBox = document.getElementById('ai-prompt');
     const copyBtn = document.getElementById('copy-prompt-btn');
+    if (!generateBtn || !promptBox || !resultContainer) return;
 
-    generateBtn.addEventListener('click', () => {
+    const newGen = generateBtn.cloneNode(true);
+    generateBtn.parentNode.replaceChild(newGen, generateBtn);
+    newGen.addEventListener('click', () => {
       resultContainer.classList.remove('hidden');
-      promptBox.value = "Generating optimal prompt template...";
-      generateBtn.disabled = true;
-
+      promptBox.value = 'Generating prompt template...';
+      newGen.disabled = true;
       setTimeout(() => {
-        // Collect ALL keywords that were fetched (up to 30)
         const keywordElements = document.querySelectorAll('#advanced-keyword-list strong');
-        const allKeywords = Array.from(keywordElements).map(el => el.innerText).join(', ');
-        
-        const marketplace = document.getElementById('marketplace-badge').innerText.replace('Analyzing ', '') || 'e-commerce';
-
-        const promptText = `Act as an expert e-commerce SEO copywriter for ${marketplace}. 
-I need you to write a highly optimized product listing based on my current product title: "${originalTitle}"
+        const allKeywords = Array.from(keywordElements).map(el => el.textContent || '').filter(Boolean).join(', ');
+        const marketplace = (document.getElementById('marketplace-badge')?.textContent || '').replace('Analyzing ', '') || 'e-commerce';
+        const titleText = originalTitle || '[product title not extracted]';
+        const promptText = `Act as an e-commerce copywriting assistant for ${marketplace}.
+I need a draft product listing based on this product title: "${titleText}"
 
 Please include:
-1. An SEO-Optimized Title (50-150 characters). It should follow the formula: [Brand] + [Core Product Name] + [Top Feature] + [Specs].
-2. 5 Bullet Points (Focus on benefits, not just features. Make the first 3 words of each bullet ALL CAPS).
-3. A 150+ word Product Description. Use HTML formatting like <b> for important phrases.
+1. A clear, accurate SEO-informed title suggestion (avoid guarantees about ranking or conversion).
+2. 5 bullet points focused on factual benefits and features.
+3. A 150+ word product description using simple HTML formatting like <b> for emphasis.
 
-${allKeywords ? `Make sure to naturally integrate as many of these high-volume search keywords as possible throughout the copy:\n${allKeywords}` : 'Please research and include high-volume search keywords relevant to this product.'}`;
+${allKeywords ? `If relevant, naturally incorporate some of these autocomplete keyword suggestions (suggestions only, not measured search volume):\n${allKeywords}` : 'If relevant, incorporate appropriate keyword suggestions based on the product.'}
 
+Important: do not invent product specs, certifications, pricing, reviews, or performance guarantees.`;
         promptBox.value = promptText;
-        generateBtn.disabled = false;
-        generateBtn.innerHTML = '<span class="icon">✨</span> Regenerate Prompt';
-      }, 500);
+        newGen.disabled = false;
+        newGen.textContent = 'Regenerate Prompt';
+      }, 200);
     });
 
     if (copyBtn) {
-      copyBtn.addEventListener('click', () => {
+      const newCopy = copyBtn.cloneNode(true);
+      copyBtn.parentNode.replaceChild(newCopy, copyBtn);
+      newCopy.addEventListener('click', () => {
         promptBox.select();
-        document.execCommand('copy');
-        
-        const originalText = copyBtn.innerHTML;
-        copyBtn.innerHTML = '✅ Copied to Clipboard!';
-        setTimeout(() => {
-          copyBtn.innerHTML = originalText;
-        }, 2000);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(promptBox.value).catch(() => {});
+        } else {
+          document.execCommand('copy');
+        }
+        const originalText = newCopy.textContent;
+        newCopy.textContent = 'Copied to clipboard';
+        setTimeout(() => { newCopy.textContent = originalText; }, 1500);
       });
     }
   }
 
-  function setupPricingCalculator(currentPriceStr) {
+  function setupPricingCalculator(analysisData) {
     const calcBtn = document.getElementById('calculate-price-btn');
     const resultsBox = document.getElementById('pricing-results');
     const costInput = document.getElementById('cost-price');
     const marginInput = document.getElementById('target-margin');
-    
-    // Parse current price (e.g. from "$24.99" to 24.99)
-    let currentPrice = 0;
-    if (currentPriceStr) {
-      currentPrice = parseFloat(currentPriceStr.replace(/[^0-9.]/g, ''));
-    }
-    
-    // If we couldn't parse it, mock an average competitor price
-    const avgCompPrice = currentPrice > 0 ? currentPrice : 29.99;
+    const feeInput = document.getElementById('marketplace-fee-percent');
+    if (!calcBtn || !resultsBox) return;
 
-    calcBtn.addEventListener('click', () => {
-      const cost = parseFloat(costInput.value);
-      const targetMargin = parseFloat(marginInput.value) / 100;
-      
-      if (isNaN(cost) || cost <= 0) {
-        alert("Please enter a valid cost price.");
+    const newBtn = calcBtn.cloneNode(true);
+    calcBtn.parentNode.replaceChild(newBtn, calcBtn);
+
+    setTextById('avg-comp-price', 'Data unavailable — no verified source.');
+    setTextById('observed-price', formatObservedPrice(analysisData && analysisData.price));
+
+    newBtn.addEventListener('click', () => {
+      const cost = parseFloat(costInput && costInput.value);
+      const targetMargin = parseFloat(marginInput && marginInput.value);
+      const feePercent = parseFloat(feeInput && feeInput.value);
+
+      const status = computeCustomPricingScenario({ cost, targetMarginPercent: targetMargin, feePercent });
+      if (!status.ok) {
+        setTextById('pricing-status', status.message);
+        setTextById('suggested-price', 'Unavailable');
+        setTextById('est-profit', 'Unavailable');
+        resultsBox.classList.remove('hidden');
         return;
       }
-      
-      // Basic math: 
-      const feeSelect = document.getElementById('marketplace-fee');
-      const referralFeeRate = parseFloat(feeSelect.value);
-      
-      // Target Sell Price = Cost / (1 - Referral Fee - Target Margin)
-      // Note: This assumes standard fulfillment, not WFS fees.
-      let targetPrice = cost / (1 - referralFeeRate - targetMargin);
-      
-      // If the target price is significantly higher than competitor, warn them.
-      let suggestedPrice = targetPrice;
-      if (targetPrice > avgCompPrice * 1.1) {
-        // Just cap it slightly above competitor to remain competitive, even if margin suffers
-        suggestedPrice = avgCompPrice;
-      }
-      
-      const referralFee = suggestedPrice * referralFeeRate;
-      const netProfit = suggestedPrice - cost - referralFee;
-      
-      document.getElementById('avg-comp-price').innerText = `$${avgCompPrice.toFixed(2)}`;
-      document.getElementById('suggested-price').innerText = `$${suggestedPrice.toFixed(2)}`;
-      document.getElementById('est-profit').innerText = `$${netProfit.toFixed(2)} (${((netProfit/suggestedPrice)*100).toFixed(1)}% margin)`;
-      
+      setTextById('pricing-status', 'Custom scenario only (user-entered assumptions). Not a verified marketplace recommendation.');
+      setTextById('suggested-price', `$${status.suggestedPrice.toFixed(2)}`);
+      setTextById('est-profit', `$${status.estimatedProfit.toFixed(2)} (${status.marginPercent.toFixed(1)}% estimated margin in this scenario)`);
       resultsBox.classList.remove('hidden');
     });
   }
 
+  function computeCustomPricingScenario(inputs) {
+    const hasCost = typeof inputs.cost === 'number' && isFinite(inputs.cost) && inputs.cost > 0;
+    const hasFee = typeof inputs.feePercent === 'number' && isFinite(inputs.feePercent) && inputs.feePercent >= 0 && inputs.feePercent < 100;
+    const hasMargin = typeof inputs.targetMarginPercent === 'number' && isFinite(inputs.targetMarginPercent);
+    if (!hasCost || !hasFee || !hasMargin) {
+      return { ok: false, message: 'Pricing unavailable/incomplete: enter a valid cost, custom fee %, and target margin %.' };
+    }
+    const feeRate = inputs.feePercent / 100;
+    const marginRate = inputs.targetMarginPercent / 100;
+    const denom = 1 - feeRate - marginRate;
+    if (denom <= 0) {
+      return { ok: false, message: 'Pricing unavailable: fee and margin assumptions leave no valid price in this scenario.' };
+    }
+    const suggestedPrice = inputs.cost / denom;
+    const estimatedFee = suggestedPrice * feeRate;
+    const estimatedProfit = suggestedPrice - inputs.cost - estimatedFee;
+    return { ok: true, suggestedPrice, estimatedFee, estimatedProfit, marginPercent: (estimatedProfit / suggestedPrice) * 100 };
+  }
+
+  function formatObservedPrice(priceObj) {
+    if (!priceObj || !priceObj.status) return 'Data unavailable — no verified source.';
+    if (priceObj.status === 'OBSERVED' && priceObj.value) return String(priceObj.value);
+    return `Data unavailable — ${priceObj.status}.`;
+  }
+
   function saveToHistory(data) {
-    if (!data.title) return;
+    if (!data || !data.title) return;
+    if (!chrome.storage || !chrome.storage.local) return;
     chrome.storage.local.get(['flexloopHistory'], (res) => {
-      let history = res.flexloopHistory || [];
-      // Remove exact duplicate title if exists
+      let history = (res && res.flexloopHistory) || [];
       history = history.filter(item => item.title !== data.title);
-      // Add to front
       history.unshift({
         title: data.title,
         score: data.score,
-        marketplace: data.marketplace,
+        scoreLabel: data.scoreLabel || 'INTERNAL_HEURISTIC',
+        marketplace: data.marketplace || 'Unknown',
         date: new Date().toISOString()
       });
-      // Keep only last 10
       if (history.length > 10) history = history.slice(0, 10);
-      
-      chrome.storage.local.set({flexloopHistory: history}, () => {
-        loadHistory(); // refresh view
-      });
+      chrome.storage.local.set({ flexloopHistory: history }, () => loadHistory());
     });
   }
 
   function loadHistory() {
+    const list = document.getElementById('history-list');
+    if (!list) return;
+    if (!chrome.storage || !chrome.storage.local) {
+      renderHistory([]);
+      return;
+    }
     chrome.storage.local.get(['flexloopHistory'], (res) => {
-      const history = res.flexloopHistory || [];
-      const list = document.getElementById('history-list');
-      
-      if (history.length === 0) {
-        list.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--text-secondary);">No history yet.</td></tr>';
-        return;
-      }
-      
-      list.innerHTML = '';
-      history.forEach(item => {
-        const tr = document.createElement('tr');
-        const shortTitle = item.title.length > 25 ? item.title.substring(0, 25) + '...' : item.title;
-        tr.innerHTML = `
-          <td title="${item.title}">${shortTitle}</td>
-          <td><strong style="color: ${item.score >= 80 ? 'var(--success)' : item.score >= 50 ? 'var(--warning)' : 'var(--error)'}">${item.score}%</strong></td>
-          <td>${item.marketplace}</td>
-          <td><button class="btn-small search-hist-btn" data-query="${encodeURIComponent(item.title)}">Search</button></td>
-        `;
-        list.appendChild(tr);
-      });
-      
-      document.querySelectorAll('.search-hist-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const q = e.target.getAttribute('data-query');
-          chrome.tabs.create({url: `https://www.google.com/search?tbm=shop&q=${q}`});
-        });
-      });
+      renderHistory((res && res.flexloopHistory) || []);
     });
-    
-    document.getElementById('clear-history-btn')?.addEventListener('click', () => {
-      chrome.storage.local.set({flexloopHistory: []}, () => {
-        loadHistory();
+
+    const clearBtn = document.getElementById('clear-history-btn');
+    if (clearBtn) {
+      const newClear = clearBtn.cloneNode(true);
+      clearBtn.parentNode.replaceChild(newClear, clearBtn);
+      newClear.addEventListener('click', () => {
+        chrome.storage.local.set({ flexloopHistory: [] }, () => renderHistory([]));
       });
+    }
+  }
+
+  function renderHistory(history) {
+    const list = document.getElementById('history-list');
+    if (!list) return;
+    clearNode(list);
+    if (!history || history.length === 0) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 4;
+      td.style.textAlign = 'center';
+      td.style.color = 'var(--text-secondary)';
+      td.textContent = 'No history yet.';
+      tr.appendChild(td);
+      list.appendChild(tr);
+      return;
+    }
+    history.forEach(item => {
+      const tr = document.createElement('tr');
+      const shortTitle = item.title && item.title.length > 25 ? item.title.substring(0, 25) + '...' : (item.title || '');
+      const tdTitle = document.createElement('td');
+      tdTitle.title = item.title || '';
+      tdTitle.textContent = shortTitle;
+
+      const tdScore = document.createElement('td');
+      const strong = document.createElement('strong');
+      const s = Number(item.score) || 0;
+      strong.style.color = s >= 80 ? 'var(--success)' : s >= 50 ? 'var(--warning)' : 'var(--error)';
+      strong.textContent = `${s}%`;
+      tdScore.appendChild(strong);
+
+      const tdMarket = document.createElement('td');
+      tdMarket.textContent = item.marketplace || '';
+
+      const tdAction = document.createElement('td');
+      const btn = document.createElement('button');
+      btn.className = 'btn-small search-hist-btn';
+      btn.textContent = 'Search';
+      btn.addEventListener('click', () => {
+        const q = encodeURIComponent(item.title || '');
+        chrome.tabs.create({ url: `https://www.google.com/search?tbm=shop&q=${q}` });
+      });
+      tdAction.appendChild(btn);
+
+      tr.appendChild(tdTitle);
+      tr.appendChild(tdScore);
+      tr.appendChild(tdMarket);
+      tr.appendChild(tdAction);
+      list.appendChild(tr);
     });
   }
 
   function setupExports(checks) {
     const exportIssuesBtn = document.getElementById('export-issues-btn');
     const exportSeoBtn = document.getElementById('export-seo-btn');
-
-    // Remove old listeners by cloning
-    const newIssuesBtn = exportIssuesBtn.cloneNode(true);
-    exportIssuesBtn.parentNode.replaceChild(newIssuesBtn, exportIssuesBtn);
-    const newSeoBtn = exportSeoBtn.cloneNode(true);
-    exportSeoBtn.parentNode.replaceChild(newSeoBtn, exportSeoBtn);
-
-    newIssuesBtn.addEventListener('click', () => {
-      let csv = "Status,Title,Message,Solution\n";
-      checks.forEach(c => {
-        csv += `"${c.status}","${c.title}","${c.message.replace(/"/g, '""')}","${c.solution ? c.solution.replace(/"/g, '""') : ''}"\n`;
+    if (exportIssuesBtn) {
+      const n = exportIssuesBtn.cloneNode(true);
+      exportIssuesBtn.parentNode.replaceChild(n, exportIssuesBtn);
+      n.addEventListener('click', () => {
+        let csv = 'Status,Title,Message,Solution\n';
+        (checks || []).forEach(c => {
+          csv += `"${safeCsv(c.status)}","${safeCsv(c.title)}","${safeCsv(c.message)}","${safeCsv(c.solution || '')}"\n`;
+        });
+        downloadCSV(csv, 'listing_health_report.csv');
       });
-      downloadCSV(csv, "listing_health_report.csv");
-    });
-
-    newSeoBtn.addEventListener('click', () => {
-      let csv = "Keyword,Search Volume,Click Rate\n";
-      const rows = document.querySelectorAll('#advanced-keyword-list tr');
-      rows.forEach(row => {
-        const cols = row.querySelectorAll('td');
-        if (cols.length >= 3) {
-          const kw = cols[0].innerText;
-          const vol = cols[1].innerText.replace(/,/g, '');
-          const rate = cols[2].innerText;
-          csv += `"${kw}","${vol}","${rate}"\n`;
-        }
+    }
+    if (exportSeoBtn) {
+      const n = exportSeoBtn.cloneNode(true);
+      exportSeoBtn.parentNode.replaceChild(n, exportSeoBtn);
+      n.addEventListener('click', () => {
+        let csv = 'Keyword,SuggestionStatus,SearchVolume,ClickRate\n';
+        const rows = document.querySelectorAll('#advanced-keyword-list tr');
+        rows.forEach(row => {
+          const cols = row.querySelectorAll('td');
+          if (cols.length >= 3) {
+            const kw = cols[0].textContent || '';
+            csv += `"${safeCsv(kw)}","SUGGESTION_ONLY","Data unavailable — no verified source","Data unavailable — no verified source"\n`;
+          }
+        });
+        downloadCSV(csv, 'seo_keyword_suggestions.csv');
       });
-      downloadCSV(csv, "seo_keywords.csv");
-    });
+    }
+  }
+
+  function safeCsv(val) {
+    return String(val == null ? '' : val).replace(/"/g, '""');
   }
 
   function downloadCSV(csv, filename) {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
+    const a = document.createElement('a');
     a.href = url;
     a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 });

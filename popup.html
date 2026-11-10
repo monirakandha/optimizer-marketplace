@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OmniMarket Optimizer</title>
+  <title>Flexloop Marketplace Analyzer</title>
   <link rel="stylesheet" href="popup.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -24,7 +24,7 @@
     <main id="main-content">
       <div class="loading-state" id="loading-state">
         <div class="spinner"></div>
-        <p>Analyzing Walmart Listing...</p>
+        <p>Analyzing listing...</p>
       </div>
 
       <div class="results-state hidden" id="results-state">
@@ -47,7 +47,7 @@
           </div>
           <div class="score-details">
             <h2 id="score-title">Listing Quality</h2>
-            <p id="score-subtitle">Score based on best practices</p>
+            <p id="score-subtitle">Label: INTERNAL_HEURISTIC (not a guarantee)</p>
           </div>
         </div>
 
@@ -61,31 +61,22 @@
         </div>
 
         <div class="tab-content active" id="issues">
-          <div style="display:flex; justify-content:flex-end; margin-bottom: 12px;">
-            <button id="export-issues-btn" class="btn-small" style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; padding:6px 12px; cursor:pointer;">⬇️ Export to CSV</button>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+            <p class="section-desc" style="margin:0; text-align:left;">Observed/extracted checks only. Missing data is not penalized.</p>
+            <button id="export-issues-btn" class="btn-small" style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; padding:6px 12px; cursor:pointer;">⬇️ Export CSV</button>
           </div>
-          <ul class="check-list" id="check-list">
-            <!-- Checks will be dynamically inserted here -->
-          </ul>
+          <ul class="check-list" id="check-list"></ul>
         </div>
 
         <div id="competitors" class="tab-content">
-          
-          <!-- Price Competitiveness Card -->
           <div id="price-competitiveness-card" class="competitor-card hidden">
-            <div class="card-header">
-              <h3>Price competitiveness</h3>
-            </div>
-            <p class="card-desc">Consider adjusting your price to match or beat the competition for better visibility and sales.</p>
-            
-            <div id="price-alert-box" class="price-alert warning">
-              <span class="icon">⚠️</span> Your current price is higher than the competition.
-            </div>
-            
+            <div class="card-header"><h3>Price comparison</h3></div>
+            <p class="card-desc">Verified competitor comparison is unavailable in this stabilized milestone.</p>
+            <div id="price-alert-box" class="price-alert warning"></div>
             <div class="price-comparison-details">
-              <h4 id="price-diff-text">$0.00 more</h4>
-              <p>Your price: <span id="your-current-price">$0.00</span></p>
-              <p>On Amazon: <span id="lowest-amazon-price">$0.00</span></p>
+              <h4 id="price-diff-text">Data unavailable — no verified source.</h4>
+              <p>Observed listing price: <span id="your-current-price">—</span></p>
+              <p>Verified competitor price: <span id="lowest-amazon-price">Data unavailable — no verified source.</span></p>
             </div>
           </div>
 
@@ -97,28 +88,23 @@
               <span class="icon">🔍</span> Open Google Shopping
             </button>
           </div>
-          
+
           <div id="live-competitors-section" style="margin-top: 24px;">
-            <div class="section-desc" style="text-align: left; font-weight: 600; color: var(--text-primary);">Live Amazon Competitors</div>
-            <div id="competitors-list" style="display: flex; flex-direction: column; gap: 8px;">
-              <div style="text-align: center; color: var(--text-secondary); font-size: 13px; padding: 20px 0;">
-                <div class="spinner" style="width: 20px; height: 20px; margin: 0 auto 8px; border-width: 2px;"></div>
-                Scraping live competitors...
-              </div>
-            </div>
+            <div class="section-desc" style="text-align: left; font-weight: 600; color: var(--text-primary);">Competitor Research</div>
+            <div id="competitors-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
           </div>
         </div>
 
         <div class="tab-content" id="seo">
           <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 16px;">
-            <p class="section-desc" style="margin-bottom:0; text-align:left;">Keyword research data (showing estimated USA volume & click rates).</p>
-            <button id="export-seo-btn" class="btn-small" style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; padding:6px 12px; cursor:pointer; white-space:nowrap; margin-left:8px;">⬇️ Export to CSV</button>
+            <p class="section-desc" style="margin-bottom:0; text-align:left;">Autocomplete keyword suggestions only (not measured search volume or click rates).</p>
+            <button id="export-seo-btn" class="btn-small" style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; padding:6px 12px; cursor:pointer; white-space:nowrap; margin-left:8px;">⬇️ Export CSV</button>
           </div>
           <div class="table-container">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>Keyword</th>
+                  <th>Keyword Suggestion</th>
                   <th>Search Vol.</th>
                   <th>Click Rate</th>
                   <th>Action</th>
@@ -131,68 +117,66 @@
           </div>
         </div>
 
-        <!-- AI Prompt Generator Tab -->
         <div id="ai-gen" class="tab-content">
-          <div class="section-desc">Generate a perfect SEO copywriting prompt for ChatGPT to write your listing.</div>
-          
+          <div class="section-desc">Generate a draft SEO copywriting prompt. Review output carefully; do not rely on unverified claims.</div>
           <button id="generate-ai-btn" class="btn btn-primary">
-            <span class="icon">✨</span> Generate ChatGPT Prompt
+            <span class="icon">✨</span> Generate Prompt
           </button>
-          
           <div id="ai-result-container" class="hidden">
             <div class="ai-box">
-              <label for="ai-prompt">Copy & Paste into ChatGPT:</label>
-              <textarea id="ai-prompt" rows="12" readonly placeholder="Your custom prompt will appear here..."></textarea>
+              <label for="ai-prompt">Copy & paste into your writing tool:</label>
+              <textarea id="ai-prompt" rows="12" readonly placeholder="Your prompt will appear here..."></textarea>
             </div>
             <button id="copy-prompt-btn" class="btn btn-secondary" style="width: 100%; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); margin-bottom: 20px;">
-              📋 Copy Prompt to Clipboard
+              📋 Copy Prompt
             </button>
           </div>
         </div>
 
         <div class="tab-content" id="pricing">
-          <p class="section-desc">Calculate your optimal selling price to beat competitors while protecting margins.</p>
-          
+          <p class="section-desc">Custom fee scenario calculator. This milestone does not provide verified marketplace fee or price recommendations.</p>
           <div class="calculator-container">
             <div class="calc-row">
-              <label for="marketplace-fee">Marketplace</label>
-              <select id="marketplace-fee">
-                <option value="0.15">Amazon / Walmart (~15%)</option>
-                <option value="0.13">eBay (~13%)</option>
-                <option value="0.10">Custom (~10%)</option>
-              </select>
+              <label for="observed-price">Observed Listing Price</label>
+              <input type="text" id="observed-price" readonly placeholder="Data unavailable">
             </div>
             <div class="calc-row">
-              <label for="cost-price">Your Cost Price ($)</label>
-              <input type="number" id="cost-price" placeholder="e.g. 15.00" step="0.01">
+              <label for="cost-price">Your Cost Price (amount)</label>
+              <input type="number" id="cost-price" placeholder="e.g. 15.00" step="0.01" min="0">
+            </div>
+            <div class="calc-row">
+              <label for="marketplace-fee-percent">Custom Fee Assumption (%)</label>
+              <input type="number" id="marketplace-fee-percent" placeholder="e.g. 15" step="0.1" min="0" max="99.9">
             </div>
             <div class="calc-row">
               <label for="target-margin">Target Profit Margin (%)</label>
-              <input type="number" id="target-margin" value="20" step="1">
+              <input type="number" id="target-margin" value="20" step="0.1">
             </div>
-            
-            <button class="btn btn-primary" id="calculate-price-btn" style="margin-top:12px;">Calculate Optimal Price</button>
-            
+            <p class="section-desc" style="margin-top:8px; font-size:12px;">Shipping, taxes, currency, and marketplace-specific fees are not assumed. Enter assumptions explicitly.</p>
+            <button class="btn btn-primary" id="calculate-price-btn" style="margin-top:12px;">Calculate Custom Scenario</button>
             <div id="pricing-results" class="hidden pricing-results-box">
               <div class="result-item">
-                <span>Avg. Competitor Price:</span>
-                <strong id="avg-comp-price" class="text-warning">$0.00</strong>
-              </div>
-              <div class="result-item highlight">
-                <span>Suggested Sell Price:</span>
-                <strong id="suggested-price" class="text-success">$0.00</strong>
+                <span>Status:</span>
+                <strong id="pricing-status" class="text-warning">Incomplete</strong>
               </div>
               <div class="result-item">
-                <span>Est. Net Profit:</span>
-                <strong id="est-profit">$0.00</strong>
+                <span>Avg. Competitor Price:</span>
+                <strong id="avg-comp-price" class="text-warning">Data unavailable — no verified source.</strong>
+              </div>
+              <div class="result-item highlight">
+                <span>Scenario Sell Price:</span>
+                <strong id="suggested-price" class="text-success">Unavailable</strong>
+              </div>
+              <div class="result-item">
+                <span>Estimated Net (scenario):</span>
+                <strong id="est-profit">Unavailable</strong>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- History Tab -->
         <div class="tab-content" id="history">
-          <p class="section-desc" style="text-align:left;">Your recently analyzed listings.</p>
+          <p class="section-desc" style="text-align:left;">Recently analyzed listings (local).</p>
           <div class="table-container">
             <table class="data-table">
               <thead>
@@ -214,10 +198,10 @@
         </div>
 
       </div>
-      
+
       <div class="error-state hidden" id="error-state">
         <div class="error-icon">⚠️</div>
-        <p id="error-message">Please open a Walmart product page to analyze.</p>
+        <p id="error-message">Please open a supported marketplace product page to analyze.</p>
       </div>
     </main>
   </div>
